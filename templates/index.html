@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>王者荣耀战区排行榜</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <img src="https://game.gtimg.cn/images/yxzj/web201706/images/comm/logo.png" alt="王者荣耀">
+                <h1>战区排行榜系统</h1>
+            </div>
+            <div class="zone-selector">
+                <label for="zone-select">选择战区:</label>
+                <select id="zone-select">
+                    <option value="">加载中...</option>
+                </select>
+            </div>
+        </header>
+
+        <main>
+            <section class="leaderboard">
+                <h2>排行榜 <span id="zone-name"></span></h2>
+                <div class="leaderboard-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>排名</th>
+                                <th>头像</th>
+                                <th>昵称</th>
+                                <th>积分</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboard-body">
+                            <tr>
+                                <td colspan="4" class="loading">加载中...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="user-panel">
+                <h2>用户操作</h2>
+                <div class="user-form">
+                    <h3>创建新用户</h3>
+                    <form id="create-user-form">
+                        <div class="form-group">
+                            <label for="nickname">昵称:</label>
+                            <input type="text" id="nickname" name="nickname" required>
+                        </div>
+                        <div class="form-group"></div>
+                            <label for="avatar-url">头像URL:</label>
+                            <input type="text" id="avatar-url" name="avatar_url">
+                        </div>
+                        <div class="form-group">
+                            <label for="user-zone">战区:</label>
+                            <select id="user-zone" name="current_zone_id">
+                                <option value="">加载中...</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn">创建用户</button>
+                    </form>
+                </div>
+
+                <div class="score-form">
+                    <h3>更新积分</h3>
+                    <form id="update-score-form">
+                        <div class="form-group">
+                            <label for="user-id">用户ID:</label>
+                            <input type="number" id="user-id" name="user_id" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="score">积分变化:</label>
+                            <input type="number" id="score" name="score" required>
+                        </div>
+                        <button type="submit" class="btn">更新积分</button>
+                    </form>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2023 王者荣耀战区排行榜系统 | 基于Redis + MySQL双引擎驱动</p>
+        </footer>
+    </div>
+
+    <!-- 消息提示框 -->
+    <div id="message-box" class="message-box">
+        <span id="message-text"></span>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
