@@ -472,6 +472,10 @@ body {
 /* Form */
 .field { margin-bottom: 18px; border: none; }
 
+.field:has(.custom-select.is-open) {
+    margin-bottom: 22px;
+}
+
 .field__label,
 legend.field__label {
     display: block;
@@ -548,14 +552,14 @@ legend.field__label {
     display: none;
 }
 
-/* 自定义下拉（固定浮层 + 丝滑动效） */
+/* 自定义下拉（紧凑、与输入框同宽） */
 .custom-select {
     position: relative;
     z-index: 1;
 }
 
 .custom-select.is-open {
-    z-index: 120;
+    z-index: 30;
 }
 
 .custom-select__native {
@@ -576,10 +580,10 @@ legend.field__label {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 8px;
     width: 100%;
-    min-height: 50px;
-    padding: 0 16px 0 42px;
+    min-height: 46px;
+    padding: 0 14px 0 42px;
     border-radius: var(--radius-md);
     border: 1px solid var(--border);
     background: linear-gradient(180deg, rgba(32, 46, 78, 0.98), rgba(14, 20, 40, 0.99));
@@ -635,67 +639,56 @@ legend.field__label {
 }
 
 .custom-select__menu {
-    position: fixed;
-    z-index: 500;
-    padding: 6px;
-    border-radius: var(--radius-md);
-    border: 1px solid rgba(218, 178, 88, 0.42);
-    background: linear-gradient(165deg, rgba(28, 42, 72, 0.98) 0%, rgba(14, 20, 38, 0.99) 100%);
-    backdrop-filter: blur(20px) saturate(1.2);
-    -webkit-backdrop-filter: blur(20px) saturate(1.2);
-    box-shadow:
-        0 4px 24px rgba(0, 0, 0, 0.35),
-        0 20px 48px rgba(0, 0, 0, 0.45),
-        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    width: 100%;
+    z-index: 40;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-gold);
+    background: #151f36;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     opacity: 0;
-    transform: translateY(-6px) scale(0.985);
+    transform: translateY(-4px);
     pointer-events: none;
     transition:
-        opacity var(--dur-mid) var(--ease-out),
-        transform var(--dur-mid) var(--ease-out);
+        opacity var(--dur-fast) var(--ease-out),
+        transform var(--dur-fast) var(--ease-out);
 }
 
 .custom-select__menu.is-open {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
     pointer-events: auto;
 }
 
-.custom-select__menu.is-flip.is-open {
-    transform: translateY(0) scale(1);
+.custom-select__scroll {
+    overflow: visible;
 }
 
-.custom-select__scroll {
-    padding: 2px 0;
-    mask-image: linear-gradient(
-        to bottom,
-        transparent 0,
-        #000 8px,
-        #000 calc(100% - 8px),
-        transparent 100%
-    );
+.custom-select__scroll.ui-scroll-hidden {
+    overflow-y: auto;
 }
 
 .custom-select__option {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 8px;
     width: 100%;
-    min-height: 44px;
-    padding: 10px 14px;
+    min-height: 36px;
+    padding: 7px 10px;
     border: none;
-    border-radius: var(--radius-sm);
+    border-radius: 6px;
     background: transparent;
     color: var(--text-1);
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     font-family: inherit;
     text-align: left;
     cursor: pointer;
-    transition:
-        background var(--dur-fast) var(--ease-out),
-        color var(--dur-fast) var(--ease-out),
-        transform var(--dur-fast) var(--ease-out);
+    transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
 }
 
 .custom-select__option:hover:not(.is-disabled),
@@ -704,22 +697,18 @@ legend.field__label {
     color: var(--gold-1);
 }
 
-.custom-select__option:active:not(.is-disabled) {
-    transform: scale(0.99);
-}
 
 .custom-select__option.is-selected {
-    background: linear-gradient(90deg, rgba(212, 175, 90, 0.24), rgba(212, 175, 90, 0.06));
+    background: rgba(212, 175, 90, 0.16);
     color: var(--gold-1);
-    font-weight: 600;
+    font-weight: 500;
 }
 
 .custom-select__option.is-selected::after {
     content: "✓";
     flex-shrink: 0;
     color: var(--gold-2);
-    font-size: 0.8rem;
-    opacity: 0.95;
+    font-size: 0.75rem;
 }
 
 .custom-select__option.is-disabled {

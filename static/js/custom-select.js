@@ -1,6 +1,9 @@
 /**
- * 深色主题自定义下拉 — 固定定位浮层、无滚动条、平滑开合
+ * 简洁自定义下拉 — 与输入框同宽、内容自适应高度
  */
+const CS_ITEM_HEIGHT = 36;
+const CS_MAX_VISIBLE = 5;
+
 function initAllCustomSelects() {
     document.querySelectorAll('select[data-custom-select]').forEach(initCustomSelect);
 }
@@ -33,7 +36,7 @@ function initCustomSelect(selectEl) {
     menu.hidden = true;
 
     const scroll = document.createElement('div');
-    scroll.className = 'custom-select__scroll ui-scroll-hidden';
+    scroll.className = 'custom-select__scroll';
     menu.appendChild(scroll);
 
     selectEl.insertAdjacentElement('afterend', trigger);
@@ -75,8 +78,7 @@ function refreshCustomSelect(selectEl) {
     if (!trigger || !scroll || !valueEl) return;
 
     const selected = selectEl.options[selectEl.selectedIndex];
-    const label = selected ? selected.textContent : '请选择';
-    valueEl.textContent = label;
+    valueEl.textContent = selected ? selected.textContent : '请选择';
     trigger.classList.toggle('is-placeholder', !selectEl.value);
 
     const hasReal = Array.from(selectEl.options).some((o) => o.value);
@@ -95,33 +97,22 @@ function refreshCustomSelect(selectEl) {
         if (opt.selected) btn.classList.add('is-selected');
         scroll.appendChild(btn);
     });
+
+    fitCustomSelectMenuHeight(selectEl);
 }
 
-function positionCustomSelectMenu(selectEl) {
+function fitCustomSelectMenuHeight(selectEl) {
     const control = selectEl.closest('.custom-select');
-    const trigger = control?.querySelector('.custom-select__trigger');
-    const menu = control?.querySelector('.custom-select__menu');
-    if (!trigger || !menu) return;
+    const scroll = control?.querySelector('.custom-select__scroll');
+    if (!scroll) return;
 
-    const rect = trigger.getBoundingClientRect();
-    const gap = 8;
-    const maxH = Math.min(280, window.innerHeight - rect.bottom - gap - 16);
-    const scroll = menu.querySelector('.custom-select__scroll');
-
-    menu.style.left = `${Math.round(rect.left)}px`;
-    menu.style.width = `${Math.round(rect.width)}px`;
-    menu.style.top = `${Math.round(rect.bottom + gap)}px`;
-    menu.style.maxHeight = `${Math.max(120, maxH)}px`;
-    if (scroll) scroll.style.maxHeight = `${Math.max(100, maxH - 12)}px`;
-
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
-    if (spaceBelow < 160 && spaceAbove > spaceBelow) {
-        menu.classList.add('is-flip');
-        const h = menu.offsetHeight || maxH;
-        menu.style.top = `${Math.round(rect.top - gap - h)}px`;
+    const count = scroll.querySelectorAll('.custom-select__option:not(.is-disabled)').length;
+    if (count <= CS_MAX_VISIBLE) {
+        scroll.style.maxHeight = '';
+        scroll.classList.remove('ui-scroll-hidden');
     } else {
-        menu.classList.remove('is-flip');
+        scroll.style.maxHeight = `${CS_MAX_VISIBLE * CS_ITEM_HEIGHT}px`;
+        scroll.classList.add('ui-scroll-hidden');
     }
 }
 
@@ -129,7 +120,7 @@ function scrollSelectedIntoView(selectEl) {
     const control = selectEl.closest('.custom-select');
     const scroll = control?.querySelector('.custom-select__scroll');
     const selected = scroll?.querySelector('.custom-select__option.is-selected');
-    selected?.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    selected?.scrollIntoView({ block: 'nearest' });
 }
 
 function openCustomSelectMenu(selectEl) {
@@ -138,25 +129,14 @@ function openCustomSelectMenu(selectEl) {
     const trigger = control?.querySelector('.custom-select__trigger');
     if (!menu || !trigger) return;
 
+    fitCustomSelectMenuHeight(selectEl);
     menu.hidden = false;
-    positionCustomSelectMenu(selectEl);
     requestAnimationFrame(() => {
         menu.classList.add('is-open');
         trigger.setAttribute('aria-expanded', 'true');
         control.classList.add('is-open');
-        requestAnimationFrame(() => {
-            positionCustomSelectMenu(selectEl);
-            scrollSelectedIntoView(selectEl);
-        });
+        scrollSelectedIntoView(selectEl);
     });
-
-    if (!selectEl._csReposition) {
-        selectEl._csReposition = () => {
-            if (menu.classList.contains('is-open')) positionCustomSelectMenu(selectEl);
-        };
-        window.addEventListener('resize', selectEl._csReposition);
-        window.addEventListener('scroll', selectEl._csReposition, true);
-    }
 }
 
 function closeCustomSelectMenu(selectEl) {
@@ -172,18 +152,12 @@ function closeCustomSelectMenu(selectEl) {
     const onEnd = (e) => {
         if (e.propertyName !== 'opacity') return;
         menu.removeEventListener('transitionend', onEnd);
-        if (!menu.classList.contains('is-open')) {
-            menu.hidden = true;
-            menu.style.left = '';
-            menu.style.top = '';
-            menu.style.width = '';
-            menu.style.maxHeight = '';
-        }
+        if (!menu.classList.contains('is-open')) menu.hidden = true;
     };
     menu.addEventListener('transitionend', onEnd);
     setTimeout(() => {
-        if (!menu.classList.contains('is-open') && !menu.hidden) menu.hidden = true;
-    }, 280);
+        if (!menu.classList.contains('is-open')) menu.hidden = true;
+    }, 220);
 }
 
 function closeAllCustomSelectMenus() {
