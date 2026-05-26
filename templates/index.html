@@ -162,7 +162,7 @@
                             <span class="field__label">选择战区</span>
                             <div class="field__control field__control--select">
                                 <i class="fas fa-map-location-dot"></i>
-                                <select id="zone-select" aria-label="选择战区">
+                                <select id="zone-select" data-custom-select aria-label="选择战区">
                                     <option value="">加载中…</option>
                                 </select>
                             </div>
@@ -248,7 +248,7 @@
                                 <span class="field__label">所属战区</span>
                                 <div class="field__control field__control--select">
                                     <i class="fas fa-map-location-dot"></i>
-                                    <select id="user-zone" name="current_zone_id" required>
+                                    <select id="user-zone" name="current_zone_id" data-custom-select required>
                                         <option value="">加载中…</option>
                                     </select>
                                 </div>
@@ -377,6 +377,7 @@
     </div>
 
     <div id="toast" class="toast" role="status"></div>
+    <script src="{{ url_for('static', filename='js/custom-select.js') }}"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

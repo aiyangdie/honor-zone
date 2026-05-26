@@ -53,6 +53,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('help-btn').addEventListener('click', openHelp);
     document.getElementById('close-help').addEventListener('click', closeHelp);
     document.getElementById('drawer-backdrop').addEventListener('click', closeHelp);
+
+    initAllCustomSelects();
 });
 
 /* ---------- Tabs ---------- */
@@ -131,6 +133,8 @@ async function loadZones() {
         toast('加载战区出错，请检查服务', true);
         zoneSelect.innerHTML = '<option value="">加载失败</option>';
         userZone.innerHTML = '<option value="">加载失败</option>';
+        refreshCustomSelect(zoneSelect);
+        refreshCustomSelect(userZone);
     }
 }
 
@@ -154,6 +158,9 @@ function populateZoneSelects(zones) {
     } else {
         document.getElementById('zone-name-label').textContent = '暂无可用战区';
     }
+
+    refreshCustomSelect(zoneSelect);
+    refreshCustomSelect(userZone);
 }
 
 function isValidZoneName(name) {

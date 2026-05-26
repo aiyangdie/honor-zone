@@ -470,29 +470,142 @@ legend.field__label {
     z-index: 1;
 }
 
-.field__control--select select,
-.field__control select {
+/* 自定义下拉（深色主题） */
+.custom-select {
+    position: relative;
+}
+
+.custom-select__native {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+.custom-select__trigger {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 48px;
+    padding: 0 40px 0 42px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(28, 40, 68, 0.95), rgba(12, 18, 36, 0.98));
+    color: var(--text-1);
+    font-size: 0.95rem;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23d4af5a' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+}
+
+.custom-select__trigger.is-placeholder {
+    color: var(--text-3);
+}
+
+.custom-select.is-open .custom-select__trigger,
+.custom-select__trigger:hover {
+    border-color: rgba(212, 175, 90, 0.45);
+}
+
+.custom-select.is-open .custom-select__trigger {
+    border-color: rgba(110, 182, 255, 0.55);
+    box-shadow: 0 0 0 3px rgba(61, 127, 214, 0.18);
+}
+
+.custom-select__menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 200;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 6px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-gold);
+    background: linear-gradient(180deg, #1a2848 0%, #121a2e 100%);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+    animation: menuDrop 0.2s ease;
+}
+
+.custom-select__menu.hidden {
+    display: none;
+}
+
+@keyframes menuDrop {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.custom-select__option {
+    display: block;
+    width: 100%;
+    padding: 12px 14px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-1);
+    font-size: 0.92rem;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.custom-select__option:hover:not(.is-disabled) {
+    background: rgba(212, 175, 90, 0.12);
+    color: var(--gold-1);
+}
+
+.custom-select__option.is-selected {
+    background: linear-gradient(90deg, rgba(212, 175, 90, 0.22), rgba(212, 175, 90, 0.08));
+    color: var(--gold-1);
+    font-weight: 600;
+}
+
+.custom-select__option.is-selected::after {
+    content: "✓";
+    float: right;
+    color: var(--gold-2);
+    font-size: 0.85rem;
+}
+
+.custom-select__option.is-disabled {
+    color: var(--text-3);
+    cursor: default;
+    font-size: 0.82rem;
+}
+
+/* 未启用自定义下拉的 select 兜底 */
+.field__control--select select:not(.custom-select__native) {
     width: 100%;
     height: 48px;
     padding: 0 36px 0 42px;
     border-radius: var(--radius-md);
     border: 1px solid var(--border);
-    background: rgba(0, 0, 0, 0.25);
+    background-color: #121a2e;
     color: var(--text-1);
     font-size: 0.95rem;
     font-family: inherit;
     outline: none;
     appearance: none;
     cursor: pointer;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23a8b2c8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 14px center;
 }
 
-.field__control--select select:focus,
-.field__control select:focus {
-    border-color: rgba(110, 182, 255, 0.5);
-    box-shadow: 0 0 0 3px rgba(61, 127, 214, 0.15);
+.field__control--select select:not(.custom-select__native) option {
+    background: #121a2e;
+    color: #f4f6fa;
 }
 
 .field__control:not(.field__control--search):not(.field__control--select) input {
