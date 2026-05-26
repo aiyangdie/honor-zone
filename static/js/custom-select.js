@@ -176,20 +176,17 @@ function onCustomSelectKeydown(e, selectEl) {
     const items = [...scroll.querySelectorAll('.custom-select__option:not(.is-disabled)')];
     if (!items.length) return;
 
-    if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        if (menu.classList.contains('is-open')) {
-            closeCustomSelectMenu(selectEl);
-        } else {
+    if (!menu.classList.contains('is-open')) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
             closeAllCustomSelectMenus();
             openCustomSelectMenu(selectEl);
         }
         return;
     }
 
-    if (!menu.classList.contains('is-open')) return;
-
     let idx = items.findIndex((el) => el.classList.contains('is-focused'));
+
     if (e.key === 'ArrowDown') {
         e.preventDefault();
         idx = idx < items.length - 1 ? idx + 1 : 0;
@@ -199,8 +196,10 @@ function onCustomSelectKeydown(e, selectEl) {
     } else if (e.key === 'Escape') {
         closeCustomSelectMenu(selectEl);
         return;
-    } else if (e.key === 'Enter' && idx >= 0) {
+    } else if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
+        if (idx < 0) idx = items.findIndex((el) => el.classList.contains('is-selected'));
+        if (idx < 0) idx = 0;
         selectEl.value = items[idx].dataset.value;
         selectEl.dispatchEvent(new Event('change', { bubbles: true }));
         closeCustomSelectMenu(selectEl);

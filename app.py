@@ -25,7 +25,13 @@ from hero_api import (
     get_api_status,
     HERO_TYPES,
 )
-from security import rate_limit, require_write_auth, safe_message
+from security import (
+    rate_limit,
+    require_write_auth,
+    safe_message,
+    init_rate_limiter,
+    is_safe_avatar_url,
+)
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
@@ -42,6 +48,7 @@ REDIS_DB = int(os.environ.get('REDIS_DB', 0))
 
 # 创建Redis连接
 redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, decode_responses=False)
+init_rate_limiter(redis_client)
 
 FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "false").lower() in ("1", "true", "yes")
 FLASK_PORT = int(os.environ.get("FLASK_PORT", 5000))
@@ -135,9 +142,30 @@ def _utf8_json(response):
     return response
 
 
+@app.teardown_appcontext
+def _shutdown_session(exception=None):
+    Session.remove()
+
+
 @app.route('/')
 def index():
-    return render_template('index.html')
+    # 仅调试或显式开启时向前端注入 API_KEY（公网生产请勿开启）
+    from security import API_KEY as _api_key
+    expose_key = os.environ.get("EXPOSE_CLIENT_API_KEY", "").lower() in (
+        "1", "true", "yes"
+    ) or FLASK_DEBUG
+    client_api_key = (_api_key if expose_key and _api_key else "")
+    return render_template('index.html', client_api_key=client_api_key)
+
+
+def _parse_positive_int(value, field_name: str):
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name}格式无效")
+    if n <= 0:
+        raise ValueError(f"{field_name}无效")
+    return n
 
 
 @app.route('/api/health', methods=['GET'])
@@ -217,13 +245,19 @@ def api_index():
 @require_write_auth
 def create_user():
     """创建新用户"""
-    data = request.json
-    if not data or not str(data.get('nickname', '')).strip():
+    data = request.json or {}
+    if not str(data.get('nickname', '')).strip():
         return jsonify({"status": "error", "message": "昵称不能为空"}), 400
 
-    zone_id = int(data.get('current_zone_id') or 0)
-    if zone_id <= 0:
-        return jsonify({"status": "error", "message": "请选择有效战区"}), 400
+    try:
+        zone_id = _parse_positive_int(data.get('current_zone_id'), "战区")
+        total_score = max(0, int(data.get('total_score', 0)))
+    except (TypeError, ValueError) as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+    avatar_url = (data.get('avatar_url') or '').strip() or None
+    if avatar_url and not is_safe_avatar_url(avatar_url):
+        return jsonify({"status": "error", "message": "头像 URL 须以 http:// 或 https:// 开头"}), 400
 
     session = Session()
     try:
@@ -233,9 +267,9 @@ def create_user():
 
         user = User(
             nickname=str(data['nickname']).strip()[:50],
-            avatar_url=data.get('avatar_url') or None,
+            avatar_url=avatar_url,
             current_zone_id=zone_id,
-            total_score=max(0, int(data.get('total_score', 0))),
+            total_score=total_score,
         )
         session.add(user)
         session.commit()
@@ -307,38 +341,38 @@ def get_user(user_id):
     finally:
         session.close()
 
-@app.route('/api/zones', methods=['GET', 'POST'])
-def zones():
-    """获取或创建战区"""
-    if request.method == 'GET':
-        try:
-            session = Session()
-            zone_list = (
-                session.query(Zone)
-                .order_by(Zone.id)
-                .all()
-            )
-            zones = [
-                {"id": zone.id, "name": zone.name, "level": zone.level}
-                for zone in zone_list
-                if not is_garbled_zone_name(zone.name)
-            ]
-            return jsonify({
-                "status": "success",
-                "data": {"zones": zones},
-            })
-        except Exception as e:
-            return jsonify({"status": "error", "message": str(e)}), 500
-        finally:
-            session.close()
+@app.route('/api/zones', methods=['GET'])
+@rate_limit("read", 60)
+def list_zones():
+    """获取战区列表"""
+    session = Session()
+    try:
+        zone_list = session.query(Zone).order_by(Zone.id).all()
+        zones_data = [
+            {"id": zone.id, "name": zone.name, "level": zone.level}
+            for zone in zone_list
+            if not is_garbled_zone_name(zone.name)
+        ]
+        return jsonify({
+            "status": "success",
+            "data": {"zones": zones_data},
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": safe_message(e)}), 500
+    finally:
+        session.close()
 
+
+@app.route('/api/zones', methods=['POST'])
+@rate_limit("write", 30)
+@require_write_auth
+def create_zone_route():
+    """创建战区"""
     if not _demo_api_allowed():
         return jsonify({"status": "error", "message": "演示写入接口已关闭"}), 403
-
     return _create_zone_impl()
 
-@require_write_auth
-@rate_limit("write", 30)
+
 def _create_zone_impl():
     data = request.json or {}
     name = str(data.get('name', '')).strip()[:50]
@@ -392,7 +426,7 @@ def update_score():
         if not user:
             return jsonify({"status": "error", "message": "用户不存在"}), 404
 
-        user.total_score += score
+        user.total_score = max(0, user.total_score + score)
         session.commit()
 
         if user.current_zone_id > 0:
@@ -416,6 +450,7 @@ def update_score():
         session.close()
 
 @app.route('/api/leaderboard/zone/<int:zone_id>', methods=['GET'])
+@rate_limit("read", 60)
 def get_zone_leaderboard(zone_id):
     """获取战区排行榜"""
     session = Session()
@@ -448,15 +483,24 @@ def get_zone_leaderboard(zone_id):
             user_ids = [int(uid) for uid, _ in leaderboard_data]
             users = session.query(User).filter(User.id.in_(user_ids)).all()
             users_by_id = {u.id: u for u in users}
-            for user_id_bytes, score in leaderboard_data:
+            for offset, (user_id_bytes, score) in enumerate(leaderboard_data):
                 user_id = int(user_id_bytes)
+                rank = start + offset + 1
                 user = users_by_id.get(user_id)
                 if user:
                     result.append({
-                        "rank": start + len(result) + 1,
+                        "rank": rank,
                         "user_id": user.id,
                         "nickname": user.nickname,
                         "avatar_url": user.avatar_url,
+                        "score": int(score),
+                    })
+                else:
+                    result.append({
+                        "rank": rank,
+                        "user_id": user_id,
+                        "nickname": "已注销用户",
+                        "avatar_url": None,
                         "score": int(score),
                     })
 
@@ -524,7 +568,7 @@ def seed_data():
         return jsonify({"status": "success", "message": "演示数据已导入", "data": created})
     except Exception as e:
         session.rollback()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": safe_message(e)}), 500
     finally:
         session.close()
 
@@ -543,10 +587,11 @@ def list_heroes():
             }
         })
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 502
+        return jsonify({"status": "error", "message": safe_message(e, "英雄列表获取失败")}), 502
 
 
 @app.route('/api/hero/status', methods=['GET'])
+@rate_limit("read", 30)
 def hero_api_status():
     """服务是否可用（不暴露内部数据源信息）"""
     raw = get_api_status(light=True)
@@ -564,13 +609,15 @@ def hero_power():
     platform_type = (request.args.get('type') or 'aqq').strip()
     if not hero:
         return jsonify({"status": "error", "message": "请提供英雄名称"}), 400
+    if platform_type not in HERO_TYPES:
+        return jsonify({"status": "error", "message": "无效的大区类型"}), 400
     try:
         data = fetch_hero_power(hero, platform_type)
         return jsonify({"status": "success", "data": _public_power(data)})
     except ValueError as e:
         return jsonify({"status": "error", "message": str(e)}), 400
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 502
+        return jsonify({"status": "error", "message": safe_message(e, "战力查询失败")}), 502
 
 
 @app.route('/api/hero/power/all', methods=['GET'])
@@ -594,10 +641,11 @@ def hero_power_all():
             },
         })
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 502
+        return jsonify({"status": "error", "message": safe_message(e, "战力查询失败")}), 502
 
 
 @app.route('/api/platforms', methods=['GET'])
+@rate_limit("read", 40)
 def list_platforms():
     return jsonify({
         "status": "success",

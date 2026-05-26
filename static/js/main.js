@@ -78,15 +78,25 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ---------- Helpers ---------- */
+function getApiHeaders(extra = {}) {
+    const headers = { ...extra };
+    const key = document.querySelector('meta[name="api-key"]')?.content?.trim();
+    if (key) headers['X-API-Key'] = key;
+    return headers;
+}
+
 async function apiJson(url, options = {}) {
-    const res = await fetch(url, options);
+    const headers = getApiHeaders(options.headers || {});
+    const res = await fetch(url, { ...options, headers });
     let data;
     try {
         data = await res.json();
     } catch {
-        throw new Error(res.status >= 500 ? 'server' : 'parse');
+        const err = new Error('parse');
+        err.status = res.status;
+        throw err;
     }
-    if (!res.ok) {
+    if (!res.ok || data?.status === 'error') {
         const err = new Error(data?.message || `HTTP ${res.status}`);
         err.status = res.status;
         err.payload = data;
@@ -96,10 +106,11 @@ async function apiJson(url, options = {}) {
 }
 
 function friendlyError(msg, status) {
+    if (msg === 'server' || msg === 'parse') return '网络或服务异常，请稍后重试';
     if (msg && status && status < 500) return msg;
-    if (msg && /请提供|不能为空|无效|不存在|过于频繁|API 密钥/i.test(msg)) return msg;
+    if (msg && /请提供|不能为空|无效|不存在|过于频繁|API 密钥|须以 http/i.test(msg)) return msg;
     if (!msg) return '未查询到结果，请检查英雄名称';
-    return status >= 500 ? '服务繁忙，请稍后重试' : (msg || '操作未成功，请稍后重试');
+    return (status && status >= 500) ? '服务繁忙，请稍后重试' : (msg || '操作未成功，请稍后重试');
 }
 
 function setFormBusy(form, busy) {
@@ -402,7 +413,7 @@ async function createZone() {
     try {
         const data = await apiJson('/api/zones', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getApiHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ name, level: 1 }),
         });
         if (data.status !== 'success') {
@@ -433,7 +444,10 @@ async function seedDemoData() {
     const btn = document.getElementById('seed-demo-btn');
     setBtnBusy(btn, true, '导入中');
     try {
-        const data = await apiJson('/api/seed', { method: 'POST' });
+        const data = await apiJson('/api/seed', {
+            method: 'POST',
+            headers: getApiHeaders(),
+        });
         if (data.status !== 'success') {
             toast(data.message || '导入失败', true);
             return;
@@ -472,7 +486,7 @@ async function createUser(e) {
     try {
         const data = await apiJson('/api/users', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getApiHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify(payload),
         });
         if (data.status !== 'success') {
@@ -506,7 +520,7 @@ async function updateScore(e) {
     try {
         const data = await apiJson('/api/scores/update', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getApiHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ user_id, score }),
         });
         if (data.status !== 'success') {

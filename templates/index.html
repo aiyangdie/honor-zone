@@ -6,6 +6,9 @@
     <meta name="theme-color" content="#0d1528">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    {% if client_api_key %}
+    <meta name="api-key" content="{{ client_api_key }}">
+    {% endif %}
     <title>荣耀战区</title>
     <link rel="icon" href="/favicon.ico" sizes="32x32">
     <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
