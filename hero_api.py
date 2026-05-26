@@ -1,4 +1,5 @@
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 
@@ -67,6 +68,10 @@ DATA_DISCLAIMER = (
 
 HERO_IMG_BASE = "https://game.gtimg.cn/images/yxzj/img201606/heroimg"
 _hero_ename_cache: Optional[Dict[str, str]] = None
+_hero_list_cache: Dict[str, Any] = {"ts": 0.0, "payload": None}
+HERO_LIST_CACHE_SEC = int(os.environ.get("HERO_LIST_CACHE_SEC", "300"))
+_status_light_cache: Dict[str, Any] = {"ts": 0.0, "healthy": False}
+STATUS_LIGHT_CACHE_SEC = int(os.environ.get("STATUS_LIGHT_CACHE_SEC", "60"))
 
 
 def _get_hero_ename_map() -> Dict[str, str]:
@@ -145,6 +150,11 @@ def _fetch_provider_list(provider_key: str) -> List[Dict[str, str]]:
 
 
 def fetch_hero_list() -> Dict[str, Any]:
+    now = time.time()
+    cached = _hero_list_cache.get("payload")
+    if cached and now - _hero_list_cache["ts"] < HERO_LIST_CACHE_SEC:
+        return cached
+
     source = "unknown"
     heroes: List[Dict[str, str]] = []
     errors: List[str] = []
@@ -166,7 +176,11 @@ def fetch_hero_list() -> Dict[str, Any]:
             except Exception as e:
                 errors.append(f"{provider_key}: {e}")
 
-    return {"heroes": heroes, "source": source, "count": len(heroes), "errors": errors}
+    payload = {"heroes": heroes, "source": source, "count": len(heroes), "errors": errors}
+    if heroes:
+        _hero_list_cache["ts"] = now
+        _hero_list_cache["payload"] = payload
+    return payload
 
 
 def _normalize_power_data(
@@ -259,26 +273,35 @@ def fetch_hero_power_all_platforms(hero: str) -> Dict[str, Any]:
     }
 
 
-def get_api_status() -> Dict[str, Any]:
+def get_api_status(light: bool = False) -> Dict[str, Any]:
+    """light=True 时仅探测列表可用性并缓存，避免每次打真实战力请求"""
     status = {
         "disclaimer": DATA_DISCLAIMER,
         "primary": PRIMARY_PROVIDER,
         "fallback": FALLBACK_PROVIDER,
         "use_official_list": USE_OFFICIAL_LIST,
-        "providers": {
-            k: {
-                "name": v["name"],
-                "label": v["label"],
-                "list_url": v["list_url"],
-                "power_url": v["power_url"],
-            }
-            for k, v in PROVIDERS.items()
-        },
-        "official_list_url": OFFICIAL_HERO_LIST_URL,
-        "platforms": [
-            {"id": k, "name": v["name"]} for k, v in HERO_TYPES.items()
-        ],
+        "platforms": [{"id": k, "name": v["name"]} for k, v in HERO_TYPES.items()],
     }
+
+    if light:
+        now = time.time()
+        if now - _status_light_cache["ts"] < STATUS_LIGHT_CACHE_SEC:
+            status["healthy"] = bool(_status_light_cache["healthy"])
+            status["light"] = True
+            return status
+
+        healthy = False
+        try:
+            result = fetch_hero_list()
+            healthy = result.get("count", 0) > 20
+        except Exception:
+            healthy = False
+
+        _status_light_cache["ts"] = now
+        _status_light_cache["healthy"] = healthy
+        status["healthy"] = healthy
+        status["light"] = True
+        return status
 
     probes = {}
     try:

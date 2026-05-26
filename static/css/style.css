@@ -178,6 +178,16 @@ body {
     border: 1px solid var(--border);
     font-size: 0.7rem;
     color: var(--text-2);
+    font-family: inherit;
+    cursor: pointer;
+    transition:
+        border-color var(--dur-fast) var(--ease-out),
+        background var(--dur-fast) var(--ease-out);
+}
+
+.status-pill:hover {
+    border-color: var(--border-gold);
+    background: rgba(212, 175, 90, 0.08);
 }
 
 .status-pill__dot {
@@ -365,6 +375,25 @@ body {
 }
 
 .section { margin-bottom: 20px; }
+
+.section--tight {
+    margin-bottom: 12px;
+}
+
+.section-title--sm {
+    font-size: 0.82rem;
+    margin-bottom: 8px;
+    color: var(--text-3);
+}
+
+.section-title--sm::before {
+    display: none;
+}
+
+.chip--recent {
+    border-color: rgba(110, 182, 255, 0.35);
+    color: var(--blue-1);
+}
 
 .section-head {
     margin-bottom: 12px;
@@ -978,14 +1007,6 @@ legend.field__label {
     background-clip: text;
 }
 
-.result-panel__foot {
-    padding: 12px 20px;
-    text-align: center;
-    font-size: 0.75rem;
-    color: var(--text-3);
-    border-top: 1px solid var(--border);
-}
-
 /* Compare */
 .compare-panel { padding: 20px; }
 
@@ -1051,6 +1072,54 @@ legend.field__label {
 }
 
 .compare-row.is-dim { opacity: 0.45; }
+
+.compare-panel__hint {
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
+    color: var(--gold-1);
+    background: rgba(212, 175, 90, 0.1);
+    border: 1px solid rgba(218, 178, 88, 0.25);
+    line-height: 1.5;
+}
+
+.compare-panel__hint i {
+    margin-right: 6px;
+    color: var(--gold-2);
+}
+
+.result-panel__foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    font-size: 0.78rem;
+    color: var(--text-3);
+    border-top: 1px solid var(--border);
+}
+
+.result-panel__foot i {
+    color: var(--gold-3);
+}
+
+.btn--load-more {
+    margin-top: 12px;
+    min-height: 42px;
+}
+
+.profile-card__rank {
+    color: var(--gold-1) !important;
+}
+
+.query-form.is-busy {
+    opacity: 0.85;
+    pointer-events: none;
+}
+
+.btn.is-busy {
+    opacity: 0.75;
+}
 
 /* Notice */
 .notice-list { display: flex; flex-direction: column; gap: 12px; }

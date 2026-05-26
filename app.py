@@ -25,6 +25,7 @@ from hero_api import (
     get_api_status,
     HERO_TYPES,
 )
+from security import rate_limit, require_write_auth, safe_message
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 
@@ -144,7 +145,7 @@ def api_health():
     """MySQL / Redis / 战力接口 / 局域网访问地址"""
     hero_online = False
     try:
-        raw = get_api_status()
+        raw = get_api_status(light=True)
         hero_online = bool(raw.get("healthy"))
     except Exception:
         pass
@@ -212,6 +213,8 @@ def api_index():
     })
 
 @app.route('/api/users', methods=['POST'])
+@rate_limit("write", 30)
+@require_write_auth
 def create_user():
     """创建新用户"""
     data = request.json
@@ -253,11 +256,12 @@ def create_user():
         }), 201
     except Exception as e:
         session.rollback()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": safe_message(e)}), 500
     finally:
         session.close()
 
 @app.route('/api/users/<int:user_id>', methods=['GET'])
+@rate_limit("read", 60)
 def get_user(user_id):
     """获取用户信息"""
     session = Session()
@@ -267,10 +271,20 @@ def get_user(user_id):
             return jsonify({"status": "error", "message": "用户不存在"}), 404
 
         zone_name = None
+        zone_rank = None
+        zone_total = None
         if user.current_zone_id:
             zone = session.query(Zone).filter_by(id=user.current_zone_id).first()
             if zone and not is_garbled_zone_name(zone.name):
                 zone_name = zone.name
+            lb_key = f"zone:{user.current_zone_id}:leaderboard"
+            try:
+                zone_total = redis_client.zcard(lb_key)
+                rk = redis_client.zrevrank(lb_key, user.id)
+                if rk is not None:
+                    zone_rank = int(rk) + 1
+            except Exception:
+                pass
 
         return jsonify({
             "status": "success",
@@ -280,6 +294,8 @@ def get_user(user_id):
                 "avatar_url": user.avatar_url,
                 "current_zone_id": user.current_zone_id,
                 "zone_name": zone_name,
+                "zone_rank": zone_rank,
+                "zone_total": zone_total,
                 "total_score": user.total_score,
                 "hero_level": user.hero_level,
                 "win_rate": user.win_rate,
@@ -287,7 +303,7 @@ def get_user(user_id):
             },
         })
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": safe_message(e)}), 500
     finally:
         session.close()
 
@@ -319,6 +335,11 @@ def zones():
     if not _demo_api_allowed():
         return jsonify({"status": "error", "message": "演示写入接口已关闭"}), 403
 
+    return _create_zone_impl()
+
+@require_write_auth
+@rate_limit("write", 30)
+def _create_zone_impl():
     data = request.json or {}
     name = str(data.get('name', '')).strip()[:50]
     if not name:
@@ -346,45 +367,51 @@ def zones():
         }), 201
     except Exception as e:
         session.rollback()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": safe_message(e)}), 500
     finally:
         session.close()
 
 @app.route('/api/scores/update', methods=['POST'])
+@rate_limit("write", 40)
+@require_write_auth
 def update_score():
     """更新用户分数"""
-    data = request.json
-    if not data or 'user_id' not in data or 'score' not in data:
+    data = request.json or {}
+    if 'user_id' not in data or 'score' not in data:
         return jsonify({"status": "error", "message": "用户ID和分数不能为空"}), 400
-    
+
     try:
-        user_id = data['user_id']
+        user_id = int(data['user_id'])
         score = int(data['score'])
-        
-        session = Session()
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "用户 ID 或积分格式无效"}), 400
+
+    session = Session()
+    try:
         user = session.query(User).filter_by(id=user_id).first()
         if not user:
             return jsonify({"status": "error", "message": "用户不存在"}), 404
-        
-        # 更新MySQL中的分数
+
         user.total_score += score
         session.commit()
-        
-        # 同步到Redis
+
         if user.current_zone_id > 0:
-            redis_client.zadd(f"zone:{user.current_zone_id}:leaderboard", {user.id: user.total_score})
-        
+            redis_client.zadd(
+                f"zone:{user.current_zone_id}:leaderboard",
+                {user.id: user.total_score},
+            )
+
         return jsonify({
             "status": "success",
             "message": "分数更新成功",
             "data": {
                 "user_id": user.id,
-                "new_score": user.total_score
-            }
+                "new_score": user.total_score,
+            },
         })
     except Exception as e:
         session.rollback()
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": safe_message(e)}), 500
     finally:
         session.close()
 
@@ -416,18 +443,25 @@ def get_zone_leaderboard(zone_id):
         )
         
         result = []
+        users_by_id = {}
         if leaderboard_data:
+            user_ids = [int(uid) for uid, _ in leaderboard_data]
+            users = session.query(User).filter(User.id.in_(user_ids)).all()
+            users_by_id = {u.id: u for u in users}
             for user_id_bytes, score in leaderboard_data:
                 user_id = int(user_id_bytes)
-                user = session.query(User).filter_by(id=user_id).first()
+                user = users_by_id.get(user_id)
                 if user:
                     result.append({
                         "rank": start + len(result) + 1,
                         "user_id": user.id,
                         "nickname": user.nickname,
                         "avatar_url": user.avatar_url,
-                        "score": int(score)
+                        "score": int(score),
                     })
+
+        total = redis_client.zcard(leaderboard_key)
+        has_more = (end + 1) < total
 
         return jsonify({
             "status": "success",
@@ -435,14 +469,20 @@ def get_zone_leaderboard(zone_id):
                 "zone_id": zone_id,
                 "zone_name": zone.name,
                 "leaderboard": result,
+                "total": total,
+                "start": start,
+                "end": min(end, total - 1) if total else end,
+                "has_more": has_more,
             },
         })
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": safe_message(e)}), 500
     finally:
         session.close()
 
 @app.route('/api/seed', methods=['POST'])
+@rate_limit("write", 10)
+@require_write_auth
 def seed_data():
     """手动写入演示数据（不删除已有数据）"""
     if not _demo_api_allowed():
@@ -490,6 +530,7 @@ def seed_data():
 
 
 @app.route('/api/heroes', methods=['GET'])
+@rate_limit("read", 40)
 def list_heroes():
     """获取英雄列表（公开数据源）"""
     try:
@@ -508,7 +549,7 @@ def list_heroes():
 @app.route('/api/hero/status', methods=['GET'])
 def hero_api_status():
     """服务是否可用（不暴露内部数据源信息）"""
-    raw = get_api_status()
+    raw = get_api_status(light=True)
     hero_online = bool(raw.get("healthy"))
     data = _service_snapshot(hero_online)
     data["online"] = hero_online
@@ -516,6 +557,7 @@ def hero_api_status():
 
 
 @app.route('/api/hero/power', methods=['GET'])
+@rate_limit("hero")
 def hero_power():
     """查询英雄最低战力战区（公开数据源）"""
     hero = (request.args.get('hero') or '').strip()
@@ -532,6 +574,7 @@ def hero_power():
 
 
 @app.route('/api/hero/power/all', methods=['GET'])
+@rate_limit("hero")
 def hero_power_all():
     """一次查询四个大区的最低战力（真实第三方数据）"""
     hero = (request.args.get('hero') or '').strip()

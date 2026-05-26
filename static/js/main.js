@@ -5,11 +5,17 @@ const PLATFORM_NAMES_FALLBACK = {
     iwx: '苹果微信',
 };
 
-let platformNames = { ...PLATFORM_NAMES_FALLBACK };
+const RECENT_HEROES_KEY = 'honor_zone_recent_heroes';
+const MAX_RECENT_HEROES = 8;
+const LEADERBOARD_PAGE = 20;
 
+let platformNames = { ...PLATFORM_NAMES_FALLBACK };
 let zonesCache = [];
 let currentZoneId = null;
 let currentZoneName = '';
+let leaderboardEnd = LEADERBOARD_PAGE - 1;
+let leaderboardHasMore = false;
+let helpDrawerPrevFocus = null;
 
 const DEFAULT_AVATAR = 'https://game.gtimg.cn/images/yxzj/img201606/heroimg/166/166.jpg';
 
@@ -17,18 +23,24 @@ document.addEventListener('DOMContentLoaded', () => {
     initTabs();
     loadPlatforms();
     loadHeroList();
+    renderRecentHeroes();
     checkService();
+
+    document.getElementById('service-status').addEventListener('click', () => checkService(true));
+    document.getElementById('service-status').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            checkService(true);
+        }
+    });
+
     loadZones();
-    
+
     document.getElementById('hero-query-form').addEventListener('submit', querySingle);
     document.getElementById('query-all-btn').addEventListener('click', queryAllPlatforms);
 
     document.querySelectorAll('.chip[data-hero]').forEach(chip => {
-        chip.addEventListener('click', () => {
-            switchTab('power');
-            document.getElementById('hero-name').value = chip.dataset.hero;
-            document.getElementById('hero-query-form').requestSubmit();
-        });
+        chip.addEventListener('click', () => pickHeroAndQuery(chip.dataset.hero));
     });
 
     document.getElementById('zone-select').addEventListener('change', onZoneChange);
@@ -36,13 +48,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const btn = e.currentTarget;
         btn.classList.add('is-spinning');
         btn.addEventListener('animationend', () => btn.classList.remove('is-spinning'), { once: true });
-        if (currentZoneId) loadLeaderboard(currentZoneId);
+        if (currentZoneId) loadLeaderboard(currentZoneId, false);
         else toast('请先选择战区', true);
+    });
+
+    document.getElementById('load-more-leaderboard').addEventListener('click', () => {
+        if (currentZoneId && leaderboardHasMore) loadLeaderboard(currentZoneId, true);
     });
 
     document.getElementById('create-user-form').addEventListener('submit', createUser);
     document.getElementById('update-score-form').addEventListener('submit', updateScore);
-    
+
     document.getElementById('create-zone-btn').addEventListener('click', createZone);
     document.getElementById('new-zone-name').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') { e.preventDefault(); createZone(); }
@@ -56,14 +72,129 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('help-btn').addEventListener('click', openHelp);
     document.getElementById('close-help').addEventListener('click', closeHelp);
     document.getElementById('drawer-backdrop').addEventListener('click', closeHelp);
+    document.addEventListener('keydown', onGlobalKeydown);
 
     initAllCustomSelects();
 });
 
+/* ---------- Helpers ---------- */
+async function apiJson(url, options = {}) {
+    const res = await fetch(url, options);
+    let data;
+    try {
+        data = await res.json();
+    } catch {
+        throw new Error(res.status >= 500 ? 'server' : 'parse');
+    }
+    if (!res.ok) {
+        const err = new Error(data?.message || `HTTP ${res.status}`);
+        err.status = res.status;
+        err.payload = data;
+        throw err;
+    }
+    return data;
+}
+
+function friendlyError(msg, status) {
+    if (msg && status && status < 500) return msg;
+    if (msg && /请提供|不能为空|无效|不存在|过于频繁|API 密钥/i.test(msg)) return msg;
+    if (!msg) return '未查询到结果，请检查英雄名称';
+    return status >= 500 ? '服务繁忙，请稍后重试' : (msg || '操作未成功，请稍后重试');
+}
+
+function setFormBusy(form, busy) {
+    if (!form) return;
+    form.querySelectorAll('button, input, select').forEach(el => {
+        el.disabled = busy;
+    });
+    form.classList.toggle('is-busy', busy);
+}
+
+function setBtnBusy(btn, busy, label) {
+    if (!btn) return;
+    if (busy) {
+        if (!btn.dataset.origHtml) btn.dataset.origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.classList.add('is-busy');
+        if (label) btn.innerHTML = `<span class="spinner-inline"></span> ${label}`;
+    } else {
+        btn.disabled = false;
+        btn.classList.remove('is-busy');
+        if (btn.dataset.origHtml) {
+            btn.innerHTML = btn.dataset.origHtml;
+            delete btn.dataset.origHtml;
+        }
+    }
+}
+
+/* ---------- Recent heroes ---------- */
+function getRecentHeroes() {
+    try {
+        const raw = localStorage.getItem(RECENT_HEROES_KEY);
+        const list = raw ? JSON.parse(raw) : [];
+        return Array.isArray(list) ? list.filter(Boolean).slice(0, MAX_RECENT_HEROES) : [];
+    } catch {
+        return [];
+    }
+}
+
+function saveRecentHero(name) {
+    const hero = String(name || '').trim();
+    if (!hero) return;
+    const list = getRecentHeroes().filter(h => h !== hero);
+    list.unshift(hero);
+    localStorage.setItem(RECENT_HEROES_KEY, JSON.stringify(list.slice(0, MAX_RECENT_HEROES)));
+    renderRecentHeroes();
+}
+
+function renderRecentHeroes() {
+    const wrap = document.getElementById('recent-heroes-wrap');
+    const box = document.getElementById('recent-heroes');
+    const list = getRecentHeroes();
+    if (!wrap || !box) return;
+    if (!list.length) {
+        wrap.classList.add('hidden');
+        return;
+    }
+    wrap.classList.remove('hidden');
+    box.innerHTML = list.map(h => `
+        <button type="button" class="chip chip--recent" data-hero="${escAttr(h)}">${esc(h)}</button>
+    `).join('');
+    box.querySelectorAll('.chip').forEach(chip => {
+        chip.addEventListener('click', () => pickHeroAndQuery(chip.dataset.hero));
+    });
+}
+
+function pickHeroAndQuery(hero) {
+    switchTab('power');
+    document.getElementById('hero-name').value = hero;
+    document.getElementById('hero-query-form').requestSubmit();
+}
+
 /* ---------- Tabs ---------- */
 function initTabs() {
-    document.querySelectorAll('.app-tabs__btn').forEach(btn => {
+    const tabs = [...document.querySelectorAll('.app-tabs__btn')];
+    tabs.forEach(btn => {
         btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+        btn.addEventListener('keydown', (e) => {
+            const idx = tabs.indexOf(btn);
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                tabs[(idx + 1) % tabs.length].focus();
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                tabs[(idx - 1 + tabs.length) % tabs.length].focus();
+            } else if (e.key === 'Home') {
+                e.preventDefault();
+                tabs[0].focus();
+            } else if (e.key === 'End') {
+                e.preventDefault();
+                tabs[tabs.length - 1].focus();
+            } else if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                switchTab(btn.dataset.tab);
+            }
+        });
     });
 }
 
@@ -72,12 +203,14 @@ function switchTab(name) {
         const active = btn.dataset.tab === name;
         btn.classList.toggle('is-active', active);
         btn.setAttribute('aria-selected', active ? 'true' : 'false');
+        btn.setAttribute('tabindex', active ? '0' : '-1');
     });
     document.querySelectorAll('.tab-panel').forEach(panel => {
         const show = panel.id === `tab-${name}`;
         panel.classList.toggle('is-active', show);
         panel.classList.toggle('hidden', !show);
     });
+    document.getElementById(`tab-btn-${name}`)?.focus({ preventScroll: true });
 }
 
 /* ---------- Platforms ---------- */
@@ -92,12 +225,11 @@ async function loadPlatforms() {
     const grid = document.getElementById('platform-grid');
     let platforms = FALLBACK_PLATFORMS;
     try {
-        const res = await fetch('/api/platforms');
-        const data = await res.json();
+        const data = await apiJson('/api/platforms');
         if (data.status === 'success' && data.data.platforms?.length) {
             platforms = data.data.platforms;
         }
-    } catch { /* use fallback */ }
+    } catch { /* fallback */ }
 
     platformNames = {};
     platforms.forEach(p => {
@@ -124,8 +256,7 @@ async function loadZones() {
     const userZone = document.getElementById('user-zone');
 
     try {
-        const res = await fetch('/api/zones');
-        const data = await res.json();
+        const data = await apiJson('/api/zones');
         if (data.status !== 'success') {
             toast('加载战区失败', true);
             return;
@@ -157,7 +288,7 @@ function populateZoneSelects(zones) {
         currentZoneName = zones[0].name;
         zoneSelect.value = currentZoneId;
         document.getElementById('zone-name-label').textContent = currentZoneName;
-        loadLeaderboard(currentZoneId);
+        loadLeaderboard(currentZoneId, false);
     } else {
         document.getElementById('zone-name-label').textContent = '暂无可用战区';
     }
@@ -177,24 +308,36 @@ function isValidZoneName(name) {
 function onZoneChange() {
     const sel = document.getElementById('zone-select');
     currentZoneId = sel.value;
+    leaderboardEnd = LEADERBOARD_PAGE - 1;
     if (!currentZoneId) {
         document.getElementById('zone-name-label').textContent = '请选择战区';
         document.getElementById('leaderboard-body').innerHTML =
             '<tr><td colspan="4" class="rank-table__empty">请选择战区查看排行</td></tr>';
+        document.getElementById('load-more-leaderboard').classList.add('hidden');
         return;
     }
     currentZoneName = sel.options[sel.selectedIndex].text;
     document.getElementById('zone-name-label').textContent = currentZoneName;
-    loadLeaderboard(currentZoneId);
+    loadLeaderboard(currentZoneId, false);
 }
 
-async function loadLeaderboard(zoneId) {
+async function loadLeaderboard(zoneId, loadMore) {
     const body = document.getElementById('leaderboard-body');
-    body.innerHTML = '<tr><td colspan="4" class="rank-table__loading"><span class="spinner-inline"></span> 加载中…</td></tr>';
+    const moreBtn = document.getElementById('load-more-leaderboard');
+
+    if (loadMore) {
+        leaderboardEnd += LEADERBOARD_PAGE;
+        moreBtn.disabled = true;
+    } else {
+        leaderboardEnd = LEADERBOARD_PAGE - 1;
+        body.innerHTML = '<tr><td colspan="4" class="rank-table__loading"><span class="spinner-inline"></span> 加载中…</td></tr>';
+        moreBtn.classList.add('hidden');
+    }
 
     try {
-        const res = await fetch(`/api/leaderboard/zone/${zoneId}?start=0&end=19`);
-        const data = await res.json();
+        const data = await apiJson(
+            `/api/leaderboard/zone/${zoneId}?start=0&end=${leaderboardEnd}`
+        );
         if (data.status !== 'success') {
             body.innerHTML = `<tr><td colspan="4" class="rank-table__empty">${esc(data.message || '加载失败')}</td></tr>`;
             return;
@@ -203,9 +346,17 @@ async function loadLeaderboard(zoneId) {
             currentZoneName = data.data.zone_name;
             document.getElementById('zone-name-label').textContent = currentZoneName;
         }
+        leaderboardHasMore = !!data.data.has_more;
         displayLeaderboard(data.data.leaderboard || []);
-    } catch {
-        body.innerHTML = '<tr><td colspan="4" class="rank-table__empty">网络异常，请稍后重试</td></tr>';
+        moreBtn.classList.toggle('hidden', !leaderboardHasMore);
+    } catch (e) {
+        if (!loadMore) {
+            body.innerHTML = `<tr><td colspan="4" class="rank-table__empty">${esc(friendlyError(e.message, e.status))}</td></tr>`;
+        } else {
+            toast(friendlyError(e.message, e.status), true);
+        }
+    } finally {
+        moreBtn.disabled = false;
     }
 }
 
@@ -215,8 +366,8 @@ function displayLeaderboard(rows) {
         body.innerHTML = '<tr><td colspan="4" class="rank-table__empty">该战区暂无排行数据，可在用户中心创建用户</td></tr>';
         return;
     }
-    
-    body.innerHTML = rows.map(row => {
+
+    const html = rows.map(row => {
         const rankClass = row.rank <= 3 ? ` rank-table__rank--top${row.rank}` : '';
         const nick = row.nickname || '未知玩家';
         const avatarSrc = row.avatar_url || DEFAULT_AVATAR;
@@ -231,6 +382,8 @@ function displayLeaderboard(rows) {
             </tr>
         `;
     }).join('');
+
+    body.innerHTML = html;
 }
 
 function formatScore(score) {
@@ -241,16 +394,17 @@ function formatScore(score) {
 
 async function createZone() {
     const input = document.getElementById('new-zone-name');
+    const btn = document.getElementById('create-zone-btn');
     const name = input.value.trim();
     if (!name) return toast('请输入战区名称', true);
 
+    setBtnBusy(btn, true, '创建中');
     try {
-        const res = await fetch('/api/zones', {
+        const data = await apiJson('/api/zones', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ name, level: 1 }),
         });
-        const data = await res.json();
         if (data.status !== 'success') {
             toast(data.message || '创建失败', true);
             return;
@@ -260,13 +414,16 @@ async function createZone() {
         await loadZones();
         if (data.data.id) {
             document.getElementById('zone-select').value = String(data.data.id);
+            refreshCustomSelect(document.getElementById('zone-select'));
             currentZoneId = String(data.data.id);
             currentZoneName = data.data.name;
             document.getElementById('zone-name-label').textContent = currentZoneName;
-            loadLeaderboard(currentZoneId);
+            loadLeaderboard(currentZoneId, false);
         }
-    } catch {
-        toast('网络异常，请稍后重试', true);
+    } catch (e) {
+        toast(friendlyError(e.message, e.status), true);
+    } finally {
+        setBtnBusy(btn, false);
     }
 }
 
@@ -274,10 +431,9 @@ async function seedDemoData() {
     if (!confirm('将导入演示战区与用户（不删除已有数据），是否继续？')) return;
 
     const btn = document.getElementById('seed-demo-btn');
-    btn.disabled = true;
+    setBtnBusy(btn, true, '导入中');
     try {
-        const res = await fetch('/api/seed', { method: 'POST' });
-        const data = await res.json();
+        const data = await apiJson('/api/seed', { method: 'POST' });
         if (data.status !== 'success') {
             toast(data.message || '导入失败', true);
             return;
@@ -285,21 +441,22 @@ async function seedDemoData() {
         const c = data.data || {};
         toast(`已导入：战区 ${c.zones || 0} 个，用户 ${c.users || 0} 个`);
         await loadZones();
-        if (currentZoneId) loadLeaderboard(currentZoneId);
-    } catch {
-        toast('网络异常，请稍后重试', true);
+        if (currentZoneId) loadLeaderboard(currentZoneId, false);
+    } catch (e) {
+        toast(friendlyError(e.message, e.status), true);
     } finally {
-        btn.disabled = false;
+        setBtnBusy(btn, false);
     }
 }
 
 /* ---------- User ---------- */
 async function createUser(e) {
     e.preventDefault();
+    const form = e.target;
     const nickname = document.getElementById('nickname').value.trim();
     const avatar_url = document.getElementById('avatar-url').value.trim();
     const zoneId = document.getElementById('user-zone').value;
-    
+
     if (!nickname) return toast('请输入昵称', true);
     if (!zoneId) return toast('请选择战区', true);
 
@@ -311,68 +468,76 @@ async function createUser(e) {
     };
     if (avatar_url) payload.avatar_url = avatar_url;
 
+    setFormBusy(form, true);
     try {
-        const res = await fetch('/api/users', {
+        const data = await apiJson('/api/users', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
-        const data = await res.json();
         if (data.status !== 'success') {
             toast(data.message || '创建失败', true);
             return;
         }
         toast(`用户创建成功，ID：${data.data.id}`);
         document.getElementById('user-id').value = data.data.id;
-        document.getElementById('create-user-form').reset();
-        document.getElementById('user-zone').value = zoneId;
-        if (String(currentZoneId) === zoneId) loadLeaderboard(zoneId);
-    } catch {
-        toast('网络异常，请稍后重试', true);
+        form.reset();
+        const userZone = document.getElementById('user-zone');
+        userZone.value = zoneId;
+        refreshCustomSelect(userZone);
+        if (String(currentZoneId) === zoneId) loadLeaderboard(zoneId, false);
+    } catch (err) {
+        toast(friendlyError(err.message, err.status), true);
+    } finally {
+        setFormBusy(form, false);
     }
 }
 
 async function updateScore(e) {
     e.preventDefault();
+    const form = e.target;
     const user_id = parseInt(document.getElementById('user-id').value, 10);
     const score = parseInt(document.getElementById('score-delta').value, 10);
 
     if (!user_id || Number.isNaN(user_id)) return toast('请输入有效用户 ID', true);
     if (Number.isNaN(score)) return toast('请输入有效积分', true);
 
+    setFormBusy(form, true);
     try {
-        const res = await fetch('/api/scores/update', {
+        const data = await apiJson('/api/scores/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_id, score }),
         });
-        const data = await res.json();
         if (data.status !== 'success') {
             toast(data.message || '更新失败', true);
             return;
         }
         toast(`积分已更新，当前总分：${data.data.new_score}`);
         document.getElementById('score-delta').value = '';
-        if (currentZoneId) loadLeaderboard(currentZoneId);
-    } catch {
-        toast('网络异常，请稍后重试', true);
+        if (currentZoneId) loadLeaderboard(currentZoneId, false);
+    } catch (err) {
+        toast(friendlyError(err.message, err.status), true);
+    } finally {
+        setFormBusy(form, false);
     }
 }
 
 async function lookupUser() {
     const userId = parseInt(document.getElementById('lookup-user-id').value, 10);
     const card = document.getElementById('user-profile-card');
+    const btn = document.getElementById('lookup-user-btn');
     if (!userId || Number.isNaN(userId)) {
         toast('请输入有效用户 ID', true);
         return;
     }
-    
+
+    setBtnBusy(btn, true, '查询中');
     card.classList.remove('hidden');
     card.innerHTML = '<p class="profile-card__loading"><span class="spinner-inline"></span> 查询中…</p>';
 
     try {
-        const res = await fetch(`/api/users/${userId}`);
-        const data = await res.json();
+        const data = await apiJson(`/api/users/${userId}`);
         if (data.status !== 'success') {
             card.innerHTML = `<p class="profile-card__empty">${esc(data.message || '未找到用户')}</p>`;
             return;
@@ -380,9 +545,12 @@ async function lookupUser() {
         const u = data.data;
         const avatarSrc = u.avatar_url || DEFAULT_AVATAR;
         const winPct = u.win_rate != null ? `${Math.round(Number(u.win_rate) * 100)}%` : '—';
+        const rankHtml = u.zone_rank
+            ? `<li><span>战区排名</span><b class="profile-card__rank">第 ${u.zone_rank} 名${u.zone_total ? ` / ${u.zone_total} 人` : ''}</b></li>`
+            : '';
         card.innerHTML = `
             <div class="profile-card__head">
-                <img class="profile-card__avatar" src="${escAttr(avatarSrc)}" alt=""
+                <img class="profile-card__avatar" src="${escAttr(avatarSrc)}" alt="${esc(u.nickname)}的头像"
                      onerror="this.src='${DEFAULT_AVATAR}'">
                 <div>
                     <h4 class="profile-card__name">${esc(u.nickname)}</h4>
@@ -391,6 +559,7 @@ async function lookupUser() {
             </div>
             <ul class="profile-card__meta">
                 <li><span>所属战区</span><b>${esc(u.zone_name || '未分配')}</b></li>
+                ${rankHtml}
                 <li><span>总积分</span><b class="profile-card__score">${formatScore(u.total_score)}</b></li>
                 <li><span>英雄等级</span><b>${u.hero_level ?? '—'} <em class="profile-card__demo">演示</em></b></li>
                 <li><span>胜率</span><b>${winPct} <em class="profile-card__demo">演示</em></b></li>
@@ -398,16 +567,17 @@ async function lookupUser() {
             </ul>
         `;
         document.getElementById('user-id').value = u.id;
-    } catch {
-        card.innerHTML = '<p class="profile-card__empty">网络异常，请稍后重试</p>';
+    } catch (e) {
+        card.innerHTML = `<p class="profile-card__empty">${esc(friendlyError(e.message, e.status))}</p>`;
+    } finally {
+        setBtnBusy(btn, false);
     }
 }
 
 function formatDate(iso) {
     if (!iso) return '—';
     try {
-        const d = new Date(iso);
-        return d.toLocaleString('zh-CN', { hour12: false });
+        return new Date(iso).toLocaleString('zh-CN', { hour12: false });
     } catch {
         return iso;
     }
@@ -419,11 +589,20 @@ function getPlatform() {
     return checked ? checked.value : 'aqq';
 }
 
+function onGlobalKeydown(e) {
+    const drawer = document.getElementById('help-drawer');
+    if (e.key === 'Escape' && drawer && !drawer.classList.contains('hidden')) {
+        closeHelp();
+    }
+}
+
 function openHelp() {
     const el = document.getElementById('help-drawer');
+    helpDrawerPrevFocus = document.activeElement;
     el.classList.remove('hidden');
     el.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
+    document.getElementById('close-help')?.focus();
 }
 
 function closeHelp() {
@@ -431,13 +610,16 @@ function closeHelp() {
     el.classList.add('hidden');
     el.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
+    helpDrawerPrevFocus?.focus?.();
 }
 
 async function loadHeroList() {
     try {
-        const res = await fetch('/api/heroes');
-        const data = await res.json();
-        if (data.status !== 'success') return;
+        const data = await apiJson('/api/heroes');
+        if (data.status !== 'success') {
+            toast('英雄列表加载失败，仍可手动输入', true);
+            return;
+        }
         const datalist = document.getElementById('hero-list');
         datalist.innerHTML = '';
         data.data.heroes.forEach(hero => {
@@ -446,19 +628,25 @@ async function loadHeroList() {
             if (hero.alias) opt.label = hero.alias;
             datalist.appendChild(opt);
         });
-    } catch { /* silent */ }
+    } catch {
+        toast('英雄列表加载失败，仍可手动输入', true);
+    }
 }
 
-async function checkService() {
+async function checkService(manual = false) {
     const pill = document.getElementById('service-status');
     const text = pill.querySelector('.status-pill__text');
     const banner = document.getElementById('service-banner');
     const lanBlock = document.getElementById('lan-access');
     const lanLink = document.getElementById('lan-url-link');
 
+    if (manual) {
+        text.textContent = '检测中…';
+        pill.classList.remove('is-online', 'is-warn');
+    }
+
     try {
-        const res = await fetch('/api/hero/status');
-        const data = await res.json();
+        const data = await apiJson('/api/hero/status');
         if (data.status !== 'success') throw new Error('bad status');
 
         const d = data.data;
@@ -475,7 +663,7 @@ async function checkService() {
         }
 
         const issues = [];
-        if (!d.mysql) issues.push('MySQL 未连接（排行榜/用户不可用）');
+        if (!d.mysql) issues.push('MySQL 未连接（排行榜/用户不可用，战力查询仍可用）');
         if (!d.redis) issues.push('Redis 未连接（排行榜不可用）');
         if (!d.online) issues.push('战力查询服务繁忙');
 
@@ -489,9 +677,9 @@ async function checkService() {
     } catch {
         pill.classList.add('is-warn');
         pill.classList.remove('is-online');
-        text.textContent = '离线';
+        text.textContent = manual ? '点击重试' : '离线';
         banner.classList.remove('hidden');
-        banner.innerHTML = '<span>无法连接服务器，请确认已运行 python app.py</span>';
+        banner.innerHTML = '<span>无法连接服务器，请确认已运行 python app.py（点击状态可重试）</span>';
     }
 }
 
@@ -538,6 +726,10 @@ function renderPowerCard(d) {
         </div>
     `).join('');
 
+    const foot = d.updated_at
+        ? `<div class="result-panel__foot"><i class="fas fa-clock"></i> 数据更新 ${esc(d.updated_at)} · 通常每周一刷新</div>`
+        : '';
+
     return `
         <div class="result-panel">
             <div class="result-panel__head">
@@ -549,41 +741,49 @@ function renderPowerCard(d) {
                 </div>
             </div>
             <div class="tier-grid">${cells}</div>
-            ${d.updated_at ? `<div class="result-panel__foot">数据更新 ${esc(d.updated_at)}</div>` : ''}
+            ${foot}
         </div>
     `;
 }
 
 async function querySingle(e) {
     e.preventDefault();
+    const form = e.target;
     const hero = document.getElementById('hero-name').value.trim();
     const type = getPlatform();
     if (!hero) return toast('请输入英雄名称', true);
 
+    saveRecentHero(hero);
+    setFormBusy(form, true);
     showLoading();
     try {
-        const res = await fetch(`/api/hero/power?hero=${encodeURIComponent(hero)}&type=${encodeURIComponent(type)}`);
-        const data = await res.json();
+        const data = await apiJson(
+            `/api/hero/power?hero=${encodeURIComponent(hero)}&type=${encodeURIComponent(type)}`
+        );
         const box = document.getElementById('hero-result');
         if (data.status !== 'success') {
             box.innerHTML = `<div class="result-panel"><div class="state-box state-box--error"><i class="fas fa-circle-exclamation"></i><p>${esc(friendlyError(data.message))}</p></div></div>`;
             return;
         }
         box.innerHTML = renderPowerCard(data.data);
-    } catch {
+    } catch (err) {
         document.getElementById('hero-result').innerHTML =
-            `<div class="result-panel"><div class="state-box state-box--error"><p>网络异常，请稍后重试</p></div></div>`;
+            `<div class="result-panel"><div class="state-box state-box--error"><p>${esc(friendlyError(err.message, err.status))}</p></div></div>`;
+    } finally {
+        setFormBusy(form, false);
     }
 }
 
 async function queryAllPlatforms() {
+    const form = document.getElementById('hero-query-form');
     const hero = document.getElementById('hero-name').value.trim();
     if (!hero) return toast('请输入英雄名称', true);
 
+    saveRecentHero(hero);
+    setFormBusy(form, true);
     showLoading();
     try {
-        const res = await fetch(`/api/hero/power/all?hero=${encodeURIComponent(hero)}`);
-        const data = await res.json();
+        const data = await apiJson(`/api/hero/power/all?hero=${encodeURIComponent(hero)}`);
         const box = document.getElementById('hero-result');
         if (data.status !== 'success') {
             box.innerHTML = `<div class="result-panel"><div class="state-box state-box--error"><p>${esc(friendlyError(data.message))}</p></div></div>`;
@@ -593,10 +793,12 @@ async function queryAllPlatforms() {
 
         let bestPtype = null;
         let bestPower = Infinity;
+        let bestArea = '';
         for (const [ptype, p] of Object.entries(platforms)) {
             if (p.area_power && p.area_power < bestPower) {
                 bestPower = p.area_power;
                 bestPtype = ptype;
+                bestArea = p.area || '';
             }
         }
 
@@ -612,41 +814,47 @@ async function queryAllPlatforms() {
                             <span>${esc(p.area || '—')}</span>
                         </div>
                         <div class="compare-row__power">
-                            ${isBest ? '<em>最低</em>' : ''}
+                            ${isBest ? '<em>最低区标</em>' : ''}
                             <b>${p.area_power}</b>
                         </div>
                     </div>
                 `;
-        } else {
+            } else {
                 rows += `<div class="compare-row is-dim"><div class="compare-row__left"><strong>${name}</strong><span>暂无数据</span></div></div>`;
             }
         }
+
+        const hint = bestPtype
+            ? `<p class="compare-panel__hint"><i class="fas fa-lightbulb"></i> 相对最低区标：<strong>${esc(platformNames[bestPtype])}</strong> · ${esc(bestArea)}（${bestPower}），仅供参考</p>`
+            : '';
 
         box.innerHTML = `
             <div class="result-panel">
                 <div class="compare-panel">
                     <h2 class="compare-panel__title">${esc(hero)} · 大区对比</h2>
                     <p class="compare-panel__sub">已获取 ${success_count} 个大区数据</p>
+                    ${hint}
                     <div class="compare-rows">${rows}</div>
                 </div>
             </div>
         `;
-    } catch {
+    } catch (err) {
         document.getElementById('hero-result').innerHTML =
-            `<div class="result-panel"><div class="state-box state-box--error"><p>网络异常，请稍后重试</p></div></div>`;
+            `<div class="result-panel"><div class="state-box state-box--error"><p>${esc(friendlyError(err.message, err.status))}</p></div></div>`;
+    } finally {
+        setFormBusy(form, false);
     }
-}
-
-function friendlyError(msg) {
-    if (!msg) return '未查询到结果，请检查英雄名称';
-    return '查询未成功，请稍后重试';
 }
 
 function toast(message, isError = false) {
     const el = document.getElementById('toast');
     el.textContent = message;
     el.className = 'toast show' + (isError ? ' error' : '');
-    setTimeout(() => { el.className = 'toast'; }, 2800);
+    el.setAttribute('role', 'alert');
+    setTimeout(() => {
+        el.className = 'toast';
+        el.setAttribute('role', 'status');
+    }, 2800);
 }
 
 function esc(str) {

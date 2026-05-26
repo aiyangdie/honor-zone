@@ -9,7 +9,6 @@
     <title>荣耀战区</title>
     <link rel="icon" href="/favicon.ico" sizes="32x32">
     <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 </head>
@@ -32,10 +31,10 @@
                     </div>
                 </div>
                 <div class="header-actions">
-                    <span id="service-status" class="status-pill">
+                    <button type="button" id="service-status" class="status-pill" title="点击重新检测服务状态" aria-live="polite">
                         <span class="status-pill__dot"></span>
                         <span class="status-pill__text">连接中</span>
-                    </span>
+                    </button>
                     <button type="button" class="btn-icon" id="help-btn" aria-label="功能说明">
                         <i class="fas fa-circle-info"></i>
                     </button>
@@ -53,16 +52,16 @@
         </section>
 
         <nav class="app-tabs" role="tablist" aria-label="功能导航">
-            <button type="button" class="app-tabs__btn is-active" role="tab" aria-selected="true"
-                    data-tab="power" id="tab-btn-power">
+            <button type="button" class="app-tabs__btn is-active" role="tab" aria-selected="true" tabindex="0"
+                    data-tab="power" id="tab-btn-power" aria-controls="tab-power">
                 <i class="fas fa-bolt"></i><span>战力查询</span>
             </button>
-            <button type="button" class="app-tabs__btn" role="tab" aria-selected="false"
-                    data-tab="rank" id="tab-btn-rank">
+            <button type="button" class="app-tabs__btn" role="tab" aria-selected="false" tabindex="-1"
+                    data-tab="rank" id="tab-btn-rank" aria-controls="tab-rank">
                 <i class="fas fa-ranking-star"></i><span>战区排行</span>
             </button>
-            <button type="button" class="app-tabs__btn" role="tab" aria-selected="false"
-                    data-tab="user" id="tab-btn-user">
+            <button type="button" class="app-tabs__btn" role="tab" aria-selected="false" tabindex="-1"
+                    data-tab="user" id="tab-btn-user" aria-controls="tab-user">
                 <i class="fas fa-user-gear"></i><span>用户中心</span>
             </button>
         </nav>
@@ -75,6 +74,10 @@
                 <section class="section">
                     <div class="section-head">
                         <h3 class="section-title">热门英雄</h3>
+                    </div>
+                    <div id="recent-heroes-wrap" class="section section--tight hidden">
+                        <p class="section-title section-title--sm">最近查询</p>
+                        <div class="scroll-chips" id="recent-heroes"></div>
                     </div>
                     <div class="scroll-chips" id="quick-heroes">
                         <button type="button" class="chip" data-hero="李白">李白</button>
@@ -195,6 +198,10 @@
                                 </tbody>
                             </table>
                         </div>
+                        <button type="button" class="btn btn--ghost btn--block btn--load-more hidden" id="load-more-leaderboard">
+                            <i class="fas fa-chevron-down"></i>
+                            <span>加载更多</span>
+                        </button>
                     </div>
                 </section>
 
@@ -328,12 +335,12 @@
         </footer>
     </div>
 
-    <div id="help-drawer" class="modal hidden" aria-hidden="true">
+    <div id="help-drawer" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="help-drawer-title" aria-hidden="true">
         <div class="modal__backdrop" id="drawer-backdrop"></div>
         <div class="modal__sheet">
             <div class="modal__handle" aria-hidden="true"></div>
             <header class="modal__header">
-                <h2>服务中心</h2>
+                <h2 id="help-drawer-title">服务中心</h2>
                 <button type="button" class="btn-icon" id="close-help" aria-label="关闭">
                     <i class="fas fa-xmark"></i>
                 </button>
