@@ -32,7 +32,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('zone-select').addEventListener('change', onZoneChange);
-    document.getElementById('refresh-leaderboard').addEventListener('click', () => {
+    document.getElementById('refresh-leaderboard').addEventListener('click', (e) => {
+        const btn = e.currentTarget;
+        btn.classList.add('is-spinning');
+        btn.addEventListener('animationend', () => btn.classList.remove('is-spinning'), { once: true });
         if (currentZoneId) loadLeaderboard(currentZoneId);
         else toast('请先选择战区', true);
     });
