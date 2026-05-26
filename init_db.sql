@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS users (
     current_zone_id INT DEFAULT 0 COMMENT '当前战区ID',
     CONSTRAINT fk_user_zone FOREIGN KEY (current_zone_id) REFERENCES zones(id),
     total_score INT DEFAULT 0 COMMENT '总积分',
+    hero_level INT DEFAULT 1 COMMENT '英雄等级',
+    win_rate FLOAT DEFAULT 0.5 COMMENT '胜率',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户信息表';

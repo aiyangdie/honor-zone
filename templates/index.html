@@ -2,98 +2,381 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>王者荣耀战区排行榜</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0d1528">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>荣耀战区</title>
+    <link rel="icon" href="/favicon.ico" sizes="32x32">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <div class="logo">
-                <img src="https://game.gtimg.cn/images/yxzj/web201706/images/comm/logo.png" alt="王者荣耀">
-                <h1>战区排行榜系统</h1>
-            </div>
-            <div class="zone-selector">
-                <label for="zone-select">选择战区:</label>
-                <select id="zone-select">
-                    <option value="">加载中...</option>
-                </select>
+    <div class="app-bg" aria-hidden="true">
+        <div class="app-bg__mesh"></div>
+        <div class="app-bg__line"></div>
+    </div>
+
+    <div class="app-shell">
+        <header class="app-header">
+            <div class="app-header__inner">
+                <div class="brand">
+                    <div class="brand__mark">
+                        <img src="https://game.gtimg.cn/images/yxzj/web201706/images/comm/logo.png" alt="">
+                    </div>
+                    <div class="brand__copy">
+                        <span class="brand__eyebrow">HONOR ZONE</span>
+                        <h1 class="brand__title">荣耀战区</h1>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <span id="service-status" class="status-pill">
+                        <span class="status-pill__dot"></span>
+                        <span class="status-pill__text">连接中</span>
+                    </span>
+                    <button type="button" class="btn-icon" id="help-btn" aria-label="功能说明">
+                        <i class="fas fa-circle-info"></i>
+                    </button>
+                </div>
             </div>
         </header>
 
-        <main>
-            <section class="leaderboard">
-                <h2>排行榜 <span id="zone-name"></span></h2>
-                <div class="leaderboard-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>排名</th>
-                                <th>头像</th>
-                                <th>昵称</th>
-                                <th>积分</th>
-                            </tr>
-                        </thead>
-                        <tbody id="leaderboard-body">
-                            <tr>
-                                <td colspan="4" class="loading">加载中...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+        <section class="hero-banner">
+            <div class="hero-banner__content">
+                <p class="hero-banner__label">全功能服务中心</p>
+                <h2 class="hero-banner__headline">战力查询 · 战区排行</h2>
+                <p class="hero-banner__desc">冲标战力参考与本地战区排行榜演示，一站完成</p>
+            </div>
+            <div class="hero-banner__deco" aria-hidden="true"></div>
+        </section>
 
-            <section class="user-panel">
-                <h2>用户操作</h2>
-                <div class="user-form">
-                    <h3>创建新用户</h3>
-                    <form id="create-user-form">
-                        <div class="form-group">
-                            <label for="nickname">昵称:</label>
-                            <input type="text" id="nickname" name="nickname" required>
-                        </div>
-                        <div class="form-group"></div>
-                            <label for="avatar-url">头像URL:</label>
-                            <input type="text" id="avatar-url" name="avatar_url">
-                        </div>
-                        <div class="form-group">
-                            <label for="user-zone">战区:</label>
-                            <select id="user-zone" name="current_zone_id">
-                                <option value="">加载中...</option>
-                            </select>
-                        </div>
-                        <button type="submit" class="btn">创建用户</button>
-                    </form>
-                </div>
+        <nav class="app-tabs" role="tablist" aria-label="功能导航">
+            <button type="button" class="app-tabs__btn is-active" role="tab" aria-selected="true"
+                    data-tab="power" id="tab-btn-power">
+                <i class="fas fa-bolt"></i><span>战力查询</span>
+            </button>
+            <button type="button" class="app-tabs__btn" role="tab" aria-selected="false"
+                    data-tab="rank" id="tab-btn-rank">
+                <i class="fas fa-ranking-star"></i><span>战区排行</span>
+            </button>
+            <button type="button" class="app-tabs__btn" role="tab" aria-selected="false"
+                    data-tab="user" id="tab-btn-user">
+                <i class="fas fa-user-gear"></i><span>用户中心</span>
+            </button>
+        </nav>
 
-                <div class="score-form">
-                    <h3>更新积分</h3>
-                    <form id="update-score-form">
-                        <div class="form-group">
-                            <label for="user-id">用户ID:</label>
-                            <input type="number" id="user-id" name="user_id" required>
+        <div id="service-banner" class="service-banner hidden" role="alert"></div>
+
+        <main class="app-main">
+            <!-- ========== 战力查询 ========== -->
+            <div id="tab-power" class="tab-panel is-active" role="tabpanel" aria-labelledby="tab-btn-power">
+                <section class="section">
+                    <div class="section-head">
+                        <h3 class="section-title">热门英雄</h3>
+                    </div>
+                    <div class="scroll-chips" id="quick-heroes">
+                        <button type="button" class="chip" data-hero="李白">李白</button>
+                        <button type="button" class="chip" data-hero="孙尚香">孙尚香</button>
+                        <button type="button" class="chip" data-hero="澜">澜</button>
+                        <button type="button" class="chip" data-hero="瑶">瑶</button>
+                        <button type="button" class="chip" data-hero="马可波罗">马可波罗</button>
+                        <button type="button" class="chip" data-hero="后羿">后羿</button>
+                    </div>
+                </section>
+
+                <section class="panel panel--primary">
+                    <div class="panel__accent"></div>
+                    <div class="panel__body">
+                        <div class="section-head section-head--inset">
+                            <h3 class="section-title">战力查询</h3>
+                            <p class="section-sub">选择英雄与大区后开始查询</p>
                         </div>
-                        <div class="form-group">
-                            <label for="score">积分变化:</label>
-                            <input type="number" id="score" name="score" required>
+
+                        <form id="hero-query-form" class="query-form">
+                            <label class="field">
+                                <span class="field__label">英雄名称</span>
+                                <div class="field__control field__control--search">
+                                    <i class="fas fa-search"></i>
+                                    <input type="search" id="hero-name" list="hero-list"
+                                           placeholder="搜索或输入英雄" required autocomplete="off" enterkeyhint="search">
+                                    <datalist id="hero-list"></datalist>
+                                </div>
+                            </label>
+
+                            <fieldset class="field">
+                                <legend class="field__label">登录大区</legend>
+                                <div class="segmented" id="platform-grid" role="radiogroup" aria-label="登录大区">
+                                    <p class="segmented__loading">加载大区…</p>
+                                </div>
+                            </fieldset>
+
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn--gold">
+                                    <span>立即查询</span>
+                                    <i class="fas fa-arrow-right"></i>
+                                </button>
+                                <button type="button" id="query-all-btn" class="btn btn--outline">
+                                    <i class="fas fa-chart-simple"></i>
+                                    <span>四区对比</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <section id="hero-result" class="result-wrap hidden" aria-live="polite"></section>
+
+                <section class="panel panel--subtle">
+                    <div class="panel__body">
+                        <div class="notice-list">
+                            <div class="notice-item">
+                                <i class="fas fa-shield-halved"></i>
+                                <p>区标战力数值越低，上榜难度越小</p>
+                            </div>
+                            <div class="notice-item">
+                                <i class="fas fa-calendar-check"></i>
+                                <p>荣耀战区每周一可在游戏内修改一次</p>
+                            </div>
+                            <div class="notice-item">
+                                <i class="fas fa-mobile-screen-button"></i>
+                                <p>请确认大区与您的账号一致后再查询</p>
+                            </div>
                         </div>
-                        <button type="submit" class="btn">更新积分</button>
-                    </form>
-                </div>
-            </section>
+                    </div>
+                </section>
+            </div>
+
+            <!-- ========== 战区排行 ========== -->
+            <div id="tab-rank" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-rank">
+                <section class="panel panel--primary">
+                    <div class="panel__accent"></div>
+                    <div class="panel__body">
+                        <div class="section-head section-head--inset">
+                            <h3 class="section-title">战区排行榜</h3>
+                            <p class="section-sub">本地演示数据 · Redis 实时排序</p>
+                        </div>
+
+                        <label class="field">
+                            <span class="field__label">选择战区</span>
+                            <div class="field__control field__control--select">
+                                <i class="fas fa-map-location-dot"></i>
+                                <select id="zone-select" aria-label="选择战区">
+                                    <option value="">加载中…</option>
+                                </select>
+                            </div>
+                        </label>
+
+                        <div class="rank-head">
+                            <h4 class="rank-head__title">
+                                <i class="fas fa-trophy"></i>
+                                <span id="zone-name-label">请选择战区</span>
+                            </h4>
+                            <button type="button" class="btn btn--sm btn--outline" id="refresh-leaderboard" title="刷新排行">
+                                <i class="fas fa-rotate"></i>
+                            </button>
+                        </div>
+
+                        <div class="rank-table-wrap">
+                            <table class="rank-table" aria-label="战区排行榜">
+                                <thead>
+                                    <tr>
+                                        <th>排名</th>
+                                        <th>头像</th>
+                                        <th>昵称</th>
+                                        <th>积分</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="leaderboard-body">
+                                    <tr>
+                                        <td colspan="4" class="rank-table__empty">请选择战区查看排行</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="panel panel--subtle">
+                    <div class="panel__body">
+                        <div class="section-head section-head--inset">
+                            <h3 class="section-title">战区管理</h3>
+                            <p class="section-sub">演示数据，非游戏官方排行榜</p>
+                        </div>
+                        <div class="tool-row">
+                            <div class="field__control field__control--grow">
+                                <input type="text" id="new-zone-name" maxlength="50" placeholder="新战区名称，如 广东·深圳">
+                            </div>
+                            <button type="button" class="btn btn--outline btn--sm" id="create-zone-btn">
+                                <i class="fas fa-plus"></i>
+                                <span>新建</span>
+                            </button>
+                        </div>
+                        <button type="button" class="btn btn--ghost btn--block" id="seed-demo-btn">
+                            <i class="fas fa-database"></i>
+                            <span>导入演示数据</span>
+                        </button>
+                    </div>
+                </section>
+            </div>
+
+            <!-- ========== 用户中心 ========== -->
+            <div id="tab-user" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-user">
+                <section class="panel panel--primary">
+                    <div class="panel__accent"></div>
+                    <div class="panel__body">
+                        <div class="section-head section-head--inset">
+                            <h3 class="section-title">创建用户</h3>
+                            <p class="section-sub">注册演示账号并加入战区排行榜</p>
+                        </div>
+
+                        <form id="create-user-form" class="query-form">
+                            <label class="field">
+                                <span class="field__label">昵称</span>
+                                <div class="field__control">
+                                    <input type="text" id="nickname" name="nickname" placeholder="请输入昵称" required maxlength="50">
+                                </div>
+                            </label>
+                            <label class="field">
+                                <span class="field__label">头像 URL（选填）</span>
+                                <div class="field__control">
+                                    <input type="url" id="avatar-url" name="avatar_url" placeholder="https://…">
+                                </div>
+                            </label>
+                            <label class="field">
+                                <span class="field__label">所属战区</span>
+                                <div class="field__control field__control--select">
+                                    <i class="fas fa-map-location-dot"></i>
+                                    <select id="user-zone" name="current_zone_id" required>
+                                        <option value="">加载中…</option>
+                                    </select>
+                                </div>
+                            </label>
+                            <label class="field">
+                                <span class="field__label">初始积分</span>
+                                <div class="field__control">
+                                    <input type="number" id="initial-score" name="initial_score"
+                                           value="1000" min="0" step="100" placeholder="默认 1000">
+                                </div>
+                            </label>
+                            <button type="submit" class="btn btn--gold">
+                                <i class="fas fa-user-plus"></i>
+                                <span>创建用户</span>
+                            </button>
+                        </form>
+                    </div>
+                </section>
+
+                <section class="panel panel--subtle">
+                    <div class="panel__body">
+                        <div class="section-head section-head--inset">
+                            <h3 class="section-title">更新积分</h3>
+                            <p class="section-sub">积分将同步至 Redis 排行榜</p>
+                        </div>
+
+                        <form id="update-score-form" class="query-form">
+                            <label class="field">
+                                <span class="field__label">用户 ID</span>
+                                <div class="field__control">
+                                    <input type="number" id="user-id" name="user_id" placeholder="创建用户后获得" required min="1">
+                                </div>
+                            </label>
+                            <label class="field">
+                                <span class="field__label">积分变化</span>
+                                <div class="field__control">
+                                    <input type="number" id="score-delta" name="score" placeholder="正数加分，负数扣分" required>
+                                </div>
+                            </label>
+                            <button type="submit" class="btn btn--outline">
+                                <i class="fas fa-arrow-trend-up"></i>
+                                <span>提交更新</span>
+                            </button>
+                        </form>
+                    </div>
+                </section>
+
+                <section class="panel panel--subtle">
+                    <div class="panel__body">
+                        <div class="section-head section-head--inset">
+                            <h3 class="section-title">查询用户</h3>
+                            <p class="section-sub">按用户 ID 查看资料与积分</p>
+                        </div>
+                        <div class="tool-row">
+                            <div class="field__control field__control--grow">
+                                <input type="number" id="lookup-user-id" min="1" placeholder="输入用户 ID">
+                            </div>
+                            <button type="button" class="btn btn--outline btn--sm" id="lookup-user-btn">
+                                <i class="fas fa-magnifying-glass"></i>
+                                <span>查询</span>
+                            </button>
+                        </div>
+                        <div id="user-profile-card" class="profile-card hidden" aria-live="polite"></div>
+                    </div>
+                </section>
+            </div>
         </main>
 
-        <footer>
-            <p>&copy; 2023 王者荣耀战区排行榜系统 | 基于Redis + MySQL双引擎驱动</p>
+        <footer class="app-footer">
+            <p class="app-footer__main">荣耀战区 · 数据同步更新</p>
+            <p class="app-footer__tech"><i class="fas fa-server"></i> 基于 Redis + MySQL 双引擎</p>
+            <p id="lan-access" class="app-footer__lan hidden">
+                <i class="fas fa-wifi"></i>
+                手机访问：<a id="lan-url-link" href="#" target="_blank" rel="noopener"></a>
+            </p>
+            <p class="app-footer__hint">排行榜为本地演示数据；战力仅供参考，非游戏内实时</p>
         </footer>
     </div>
 
-    <!-- 消息提示框 -->
-    <div id="message-box" class="message-box">
-        <span id="message-text"></span>
+    <div id="help-drawer" class="modal hidden" aria-hidden="true">
+        <div class="modal__backdrop" id="drawer-backdrop"></div>
+        <div class="modal__sheet">
+            <div class="modal__handle" aria-hidden="true"></div>
+            <header class="modal__header">
+                <h2>服务中心</h2>
+                <button type="button" class="btn-icon" id="close-help" aria-label="关闭">
+                    <i class="fas fa-xmark"></i>
+                </button>
+            </header>
+            <div class="modal__body">
+                <div class="service-grid">
+                    <article class="service-card">
+                        <div class="service-card__icon"><i class="fas fa-medal"></i></div>
+                        <h3>战力查询</h3>
+                        <p>国标、省标、市标、区标战力一站查询</p>
+                    </article>
+                    <article class="service-card">
+                        <div class="service-card__icon"><i class="fas fa-chart-pie"></i></div>
+                        <h3>四区对比</h3>
+                        <p>横向对比四个大区最低区标门槛</p>
+                    </article>
+                    <article class="service-card">
+                        <div class="service-card__icon"><i class="fas fa-ranking-star"></i></div>
+                        <h3>战区排行</h3>
+                        <p>按战区查看演示排行榜，Redis 实时排序</p>
+                    </article>
+                    <article class="service-card">
+                        <div class="service-card__icon"><i class="fas fa-user-plus"></i></div>
+                        <h3>用户中心</h3>
+                        <p>创建演示用户、更新积分并上榜</p>
+                    </article>
+                    <article class="service-card">
+                        <div class="service-card__icon"><i class="fas fa-map-pin"></i></div>
+                        <h3>新建战区</h3>
+                        <p>自定义战区名称并加入排行榜</p>
+                    </article>
+                    <article class="service-card">
+                        <div class="service-card__icon"><i class="fas fa-database"></i></div>
+                        <h3>导入演示</h3>
+                        <p>一键写入演示战区与用户数据</p>
+                    </article>
+                </div>
+                <p class="modal__devhint">开发者接口文档：<a href="/api" target="_blank" rel="noopener">GET /api</a></p>
+            </div>
+        </div>
     </div>
 
+    <div id="toast" class="toast" role="status"></div>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

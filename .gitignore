@@ -104,6 +104,11 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
+# Redis / local dumps
+dump.rdb
+*.rdb
+static/favicon-source.png
+
 # Environments
 .env
 .venv

@@ -1,12 +1,10 @@
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, ForeignKey, TIMESTAMP, Float
 from sqlalchemy.sql import func
-from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
 Base = declarative_base()
-engine = create_engine('mysql+pymysql://game_user:game_password@localhost/game_leaderboard')
 
 class Zone(Base):
     """战区信息模型"""

@@ -1,0 +1,23 @@
+# Render 一键部署：https://render.com
+# 需在控制台另行添加 MySQL、Redis 环境变量（见 docs/DEPLOY.md）
+services:
+  - type: web
+    name: honor-zone
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.0"
+      - key: FLASK_DEBUG
+        value: "false"
+      - key: ENABLE_DEMO_API
+        value: "true"
+      - key: HERO_API_PRIMARY
+        value: sapi
+      - key: HERO_API_FALLBACK
+        value: xxoo
+      - key: HERO_USE_OFFICIAL_LIST
+        value: "true"
