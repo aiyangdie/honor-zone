@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/covers/41-honor-zone.jpg" alt="honor-zone 项目封面" width="100%"></p>
+
 # 荣耀战区 · Honor Zone Web
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
